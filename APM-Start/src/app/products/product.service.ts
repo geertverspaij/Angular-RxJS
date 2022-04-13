@@ -1,10 +1,12 @@
 import { Injectable } from '@angular/core';
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 
-import { BehaviorSubject, catchError, combineLatest, map, merge, Observable, scan, shareReplay, Subject, tap, throwError } from 'rxjs';
+import { BehaviorSubject, catchError, combineLatest, filter, forkJoin, map, merge, Observable, of, scan, shareReplay, Subject, switchMap, tap, throwError } from 'rxjs';
 
 import { Product } from './product';
 import { ProductCategoryService } from '../product-categories/product-category.service';
+import { SupplierService } from '../suppliers/supplier.service';
+import { Supplier } from '../suppliers/supplier';
 
 @Injectable({
   providedIn: 'root'
@@ -60,6 +62,33 @@ export class ProductService {
 //      shareReplay(1), // caching, 
   );
 
+  selectedProductSuppliersAlle$ = combineLatest([
+    this.selectedProduct$,
+    this.supplierService.suppliers$]
+  )
+    .pipe(
+      map(([selectedProduct, suppliers]) => suppliers.filter(supplier => selectedProduct?.supplierIds?.includes(supplier.id))),
+      tap(data => console.log('selectedProductSupplier', data))
+    );
+
+  // just in time
+  selectedProductSuppliers$ = this.selectedProduct$
+    .pipe(
+      filter(product => Boolean(product)), // true als Product gedefinieerd, false bij undefined of null
+      switchMap(selectedProduct => {
+        if (selectedProduct?.supplierIds) {
+          return forkJoin(selectedProduct.supplierIds.map(supplierId =>
+            this.http.get<Supplier>(`${this.suppliersUrl}/${supplierId}`)))
+        }
+          else {
+            return of([]);
+          }
+        }
+      ));
+      //map(([selectedProduct, suppliers]) => suppliers.filter(supplier => selectedProduct?.supplierIds?.includes(supplier.id))),
+     // tap(data => console.log('selectedProductSupplier', data))
+  
+
   addProduct(newProduct?: Product) {
     newProduct = newProduct || this.fakeProduct();
     this.productInsertedSubject.next(newProduct);
@@ -70,7 +99,8 @@ export class ProductService {
     this.productSelectedSubject.next(selectedProductId);
   }
 
-  constructor(private http: HttpClient, private productCategoryService: ProductCategoryService) { }
+  constructor(private http: HttpClient, private productCategoryService: ProductCategoryService,
+    private supplierService: SupplierService) { }
 
   private fakeProduct(): Product {
     return {
